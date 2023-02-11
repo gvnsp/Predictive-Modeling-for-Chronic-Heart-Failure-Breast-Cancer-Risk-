@@ -1,0 +1,282 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+x = read.csv('dataforanalysis.csv', header = TRUE)
+# Changing name of the first column
+
+colnames(x)[1] = 'id'
+dataset = data.frame(x[2:12])
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(plotly)
+library(knitr)
+library(tidymodels)
+library(parsnip)
+library(dplyr)
+library(tidylab)
+library(naniar)
+library(gtsummary)
+library(kernlab)
+library(nnet)
+library(naivebayes)
+library(discrim)
+library(baguette)
+library(kknn)
+library(rpart.plot)
+library(xgboost)
+```
+
+```{r}
+colnames(dataset)
+```
+```{r}
+dataset %>% 
+  group_by(diagnosis) %>% 
+  summarize(n = n()) %>% 
+  mutate(prop =n/sum(n))
+```
+Split the data randomly into a training set (2/3rds) and a test set (1/3rds).
+
+```{r}
+set.seed(1)
+split_data =
+  initial_split(dataset,
+                prop = 2/3)
+
+#To access the training data:
+training(split_data)
+#To access the testing data:
+testing(split_data)
+```
+Specify a recipe with predictors, outcomes, and pre-processing steps
+```{r}
+my_recipe =
+  recipe(training(split_data),
+         diagnosis ~ .)
+
+my_recipe
+```
+Decision tree
+```{r}
+tree_model =
+  decision_tree() %>% 
+  set_engine('rpart',minsplit=2, minbucket=1) %>% 
+  set_mode('classification')
+
+tree_workflow =
+  workflow() %>% 
+  add_recipe(my_recipe) %>% 
+  add_model(tree_model)
+
+tree_results =
+  last_fit(
+    tree_workflow,
+    split = split_data,
+    metrics = metric_set(roc_auc,
+                         accuracy,
+                         sens,
+                         spec,
+                         ppv,
+                         npv))
+
+tree_results %>%
+  collect_metrics()
+
+tree_results %>% 
+  extract_fit_engine() %>% 
+  rpart.plot::rpart.plot(roundint=FALSE)
+
+```
+K Nearest Neighbors Model
+```{r}
+knn_spec = nearest_neighbor(neighbors = 5) %>%
+  set_engine("kknn") %>% 
+  set_mode("classification")
+
+knn_workflow =
+  workflow() %>% 
+  add_recipe(my_recipe) %>% 
+  add_model(knn_spec)
+
+knn_results =
+  last_fit(
+    knn_workflow,
+    split = split_data,
+    metrics = metric_set(roc_auc,
+                         accuracy,
+                         sens,
+                         spec,
+                         ppv,
+                         npv))
+knn_results %>% 
+  collect_predictions() %>%
+  glimpse()
+
+knn_results %>% 
+  collect_metrics()
+
+```
+Support vector machines (with any kernel option)
+```{r}
+svm_model =
+  svm_poly() %>%
+  set_engine("kernlab") %>% 
+  set_mode("classification")
+
+svm_workflow =
+  workflow() %>%
+  add_recipe(my_recipe) %>%
+  add_model(svm_model)
+
+svm_results =
+  last_fit(
+    svm_workflow,
+    split = split_data,
+    metrics = metric_set(roc_auc,
+                         accuracy,
+                         sens,
+                         spec,
+                         ppv,
+                         npv))
+svm_results %>%
+  collect_metrics()
+```
+Multilayer perceptron or neural network
+```{r}
+perc_model =
+  mlp() %>%
+  set_engine("nnet") %>% 
+  set_mode("classification")
+
+perc_workflow =
+  workflow() %>%
+  add_recipe(my_recipe) %>%
+  add_model(perc_model)
+
+perc_results =
+  last_fit(
+    perc_workflow,
+    split = split_data,
+    metrics = metric_set(roc_auc,
+                         accuracy,
+                         sens,
+                         spec,
+                         ppv,
+                         npv))
+perc_results %>%
+  collect_metrics()
+```
+Naive Bayes
+```{r}
+bay_model =
+  naive_Bayes() %>% 
+  set_engine('naivebayes') %>% 
+  set_mode('classification')
+
+bay_workflow =
+  workflow() %>% 
+  add_recipe(my_recipe) %>% 
+  add_model(bay_model)
+
+bay_results = 
+  last_fit(
+    bay_workflow,
+    split = split_data,
+    metrics = metric_set(roc_auc,
+                         accuracy,
+                         sens,
+                         spec,
+                         ppv,
+                         npv))
+
+bay_results %>%
+  collect_metrics()
+```
+Logistic regression
+```{r}
+logit_model =
+  logistic_reg() %>% 
+  set_engine('glm') %>% 
+  set_mode('classification')
+
+logit_workflow =
+  workflow() %>% 
+  add_recipe(my_recipe) %>% 
+  add_model(logit_model)
+
+logit_results = 
+  last_fit(
+    logit_workflow,
+    split = split_data,
+    metrics = metric_set(roc_auc,
+                         accuracy,
+                         sens,
+                         spec,
+                         ppv,
+                         npv))
+
+logit_results %>%
+  collect_metrics()
+```
+Bagged trees
+```{r}
+tree_model =
+  bag_tree() %>% 
+  set_engine('rpart',times = 50) %>% 
+  set_mode('classification') %>% 
+    set_args(cost_complexity = 0,
+           min_n = 2)
+
+tree_workflow =
+  workflow() %>% 
+  add_recipe(my_recipe) %>% 
+  add_model(tree_model)
+
+tree_results =
+  last_fit(
+    tree_workflow,
+    split = split_data,
+    metrics = metric_set(roc_auc,
+                         accuracy,
+                         sens,
+                         spec,
+                         ppv,
+                         npv))
+
+tree_results %>%
+  collect_metrics()
+
+```
+
+Boosting trees
+
+```{r}
+boost_model =
+  boost_tree() %>% 
+  set_engine('xgboost') %>% 
+  set_mode('classification')
+
+boost_workflow =
+  workflow() %>% 
+  add_recipe(my_recipe) %>% 
+  add_model(boost_model)
+
+boost_results =
+  last_fit(
+    boost_workflow,
+    split = split_data,
+    metrics = metric_set(roc_auc,
+                         accuracy,
+                         sens,
+                         spec,
+                         ppv,
+                         npv))
+
+boost_results %>%
+  collect_metrics()
+```
